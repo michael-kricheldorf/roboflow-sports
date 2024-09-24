@@ -413,7 +413,7 @@ def main(source_video_path: str, target_video_path: str, device: str, mode: Mode
         for frame in frame_generator:
             sink.write_frame(frame)
 
-            cv2.imwrite("/mmpose/projects/rtmpose3d/mount", frame)
+            cv2.imwrite(target_video_path, frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
         cv2.destroyAllWindows()
