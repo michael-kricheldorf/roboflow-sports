@@ -413,11 +413,11 @@ def main(source_video_path: str, target_video_path: str, device: str, mode: Mode
     with sv.VideoSink(target_video_path, video_info) as sink:
         for frame in frame_generator:
             sink.write_frame(frame)
-
+        print("Successfully wrote to '" + target_video_path + "'.")
             #cv2.imwrite(target_video_path, frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-        cv2.destroyAllWindows()
+            # if cv2.waitKey(1) & 0xFF == ord("q"):
+            #     break
+        #cv2.destroyAllWindows()
     # with sv.VideoSink(target_video_path, video_info) as sink:
     #     for frame in frame_generator:
     #         sink.write_frame(frame)
