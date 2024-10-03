@@ -128,6 +128,18 @@ def resolve_goalkeepers_team_id(
         goalkeepers_team_id.append(0 if dist_0 < dist_1 else 1)
     return np.array(goalkeepers_team_id)
 
+def radar_transform(
+    detections: sv.Detections,
+    keypoints: sv.KeyPoints,
+    color_lookup: np.ndarray
+) -> np.ndarray:
+    mask = (keypoints.xy[0][:, 0] > 1) & (keypoints.xy[0][:, 1] > 1)
+    transformer = ViewTransformer(
+        source=keypoints.xy[0][mask].astype(np.float32),
+        target=np.array(CONFIG.vertices)[mask].astype(np.float32)
+    )
+    xy = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
+    return transformer.transform_points(points=xy)
 
 def render_radar(
     detections: sv.Detections,
@@ -323,6 +335,68 @@ def run_team_classification(source_video_path: str, device: str) -> Iterator[np.
         yield annotated_frame
 
 
+# def run_radar(source_video_path: str, device: str) -> Iterator[np.ndarray]:
+#     player_detection_model = YOLO(PLAYER_DETECTION_MODEL_PATH).to(device=device)
+#     pitch_detection_model = YOLO(PITCH_DETECTION_MODEL_PATH).to(device=device)
+#     frame_generator = sv.get_video_frames_generator(
+#         source_path=source_video_path, stride=STRIDE)
+
+#     crops = []
+#     for frame in tqdm(frame_generator, desc='collecting crops'):
+#         result = player_detection_model(frame, imgsz=1280, verbose=False)[0]
+#         detections = sv.Detections.from_ultralytics(result)
+#         crops += get_crops(frame, detections[detections.class_id == PLAYER_CLASS_ID])
+
+#     team_classifier = TeamClassifier(device=device)
+#     team_classifier.fit(crops)
+
+#     frame_generator = sv.get_video_frames_generator(source_path=source_video_path)
+#     tracker = sv.ByteTrack(minimum_consecutive_frames=3)
+#     for frame in frame_generator:
+#         result = pitch_detection_model(frame, verbose=False)[0]
+#         keypoints = sv.KeyPoints.from_ultralytics(result)
+#         result = player_detection_model(frame, imgsz=1280, verbose=False)[0]
+#         detections = sv.Detections.from_ultralytics(result)
+#         detections = tracker.update_with_detections(detections)
+
+#         players = detections[detections.class_id == PLAYER_CLASS_ID]
+#         crops = get_crops(frame, players)
+#         players_team_id = team_classifier.predict(crops)
+
+#         goalkeepers = detections[detections.class_id == GOALKEEPER_CLASS_ID]
+#         goalkeepers_team_id = resolve_goalkeepers_team_id(
+#             players, players_team_id, goalkeepers)
+
+#         referees = detections[detections.class_id == REFEREE_CLASS_ID]
+
+#         detections = sv.Detections.merge([players, goalkeepers, referees])
+#         color_lookup = np.array(
+#             players_team_id.tolist() +
+#             goalkeepers_team_id.tolist() +
+#             [REFEREE_CLASS_ID] * len(referees)
+#         )
+#         labels = [str(tracker_id) for tracker_id in detections.tracker_id]
+
+#         annotated_frame = frame.copy()
+#         annotated_frame = ELLIPSE_ANNOTATOR.annotate(
+#             annotated_frame, detections, custom_color_lookup=color_lookup)
+#         annotated_frame = ELLIPSE_LABEL_ANNOTATOR.annotate(
+#             annotated_frame, detections, labels,
+#             custom_color_lookup=color_lookup)
+
+#         h, w, _ = frame.shape
+#         radar = render_radar(detections, keypoints, color_lookup)
+#         radar = sv.resize_image(radar, (w // 2, h // 2))
+#         radar_h, radar_w, _ = radar.shape
+#         rect = sv.Rect(
+#             x=w // 2 - radar_w // 2,
+#             y=h - radar_h,
+#             width=radar_w,
+#             height=radar_h
+#         )
+#         annotated_frame = sv.draw_image(annotated_frame, radar, opacity=0.5, rect=rect)
+#         yield annotated_frame
+
 def run_radar(source_video_path: str, device: str) -> Iterator[np.ndarray]:
     player_detection_model = YOLO(PLAYER_DETECTION_MODEL_PATH).to(device=device)
     pitch_detection_model = YOLO(PITCH_DETECTION_MODEL_PATH).to(device=device)
@@ -371,20 +445,10 @@ def run_radar(source_video_path: str, device: str) -> Iterator[np.ndarray]:
         annotated_frame = ELLIPSE_LABEL_ANNOTATOR.annotate(
             annotated_frame, detections, labels,
             custom_color_lookup=color_lookup)
-
-        h, w, _ = frame.shape
-        radar = render_radar(detections, keypoints, color_lookup)
-        radar = sv.resize_image(radar, (w // 2, h // 2))
-        radar_h, radar_w, _ = radar.shape
-        rect = sv.Rect(
-            x=w // 2 - radar_w // 2,
-            y=h - radar_h,
-            width=radar_w,
-            height=radar_h
-        )
-        annotated_frame = sv.draw_image(annotated_frame, radar, opacity=0.5, rect=rect)
-        yield annotated_frame
-
+        
+        trans_xy = radar_transform(detections, keypoints, color_lookup)
+        print(trans_xy)
+        yield trans_xy
 
 def main(source_video_path: str, target_video_path: str, device: str, mode: Mode) -> None:
     if mode == Mode.PITCH_DETECTION:
